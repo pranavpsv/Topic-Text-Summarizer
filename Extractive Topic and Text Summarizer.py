@@ -1,55 +1,44 @@
 import bs4 as bs  
-import urllib.request  
 import re
 import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
-import selenium.webdriver as wb
 import heapq
 import stop_words
+import wikipedia
+import requests
+from nltk.corpus import wordnet
 
 # Have the set of stopwords which you want to later filter out
 stop_words = stop_words.stopWords
 
 # Returns the url of search results based on search term
-# Automates a search on google chrome and extracs the url that has info on search term
-def results(search_term):
-    url = " https://www.google.com/search?hl=en&q="
-    # Uses chromedriver with selenium. To replicate, download chromedriver and modify the executable path if needed.
-    browser = wb.Chrome(executable_path=r"D:\Python\chromedriver.exe")
-    browser.get(url)
-    
-    search_box = browser.find_element_by_name("q")
-    search_box.send_keys(search_term)
-    search_box.submit()
-    
-    link = browser.find_element_by_partial_link_text("Wikipedia")
-    href = link.get_attribute("href")
-    browser.close()        
-    return href
 
 # Asks user what topic they would like summarized
 def asktopic():
-    global topic_ask
     topic_ask = input("What topic would you like to summarize? \n")
     return topic_ask
 
 # Converts the topic url to text by parsing through html
-def topic_to_text():   
+def scrape_page():
     global article, formatted_text, paragraphs
-    topic_ask = asktopic()
-    scraped_data = urllib.request.urlopen(results(topic_ask))  
-    article = scraped_data.read()
+    scraped_page = requests.get(url)
+    article = scraped_page.text
     parsed_article = bs.BeautifulSoup(article,'html.parser')
-    
     paragraphs = parsed_article.find_all('p')
-    
     text = ""
-    
     for p in paragraphs:  
         text += p.text
     article = re.sub(r'\s+', ' ', text)
     formatted_text = re.sub('[^a-zA-Z]', " ", article)
     formatted_text = re.sub(r'\s+', " ", formatted_text)
+
+    
+def topic_to_text():   
+    global article, formatted_text, paragraphs, url
+    topic_ask = asktopic()
+    url = wikipedia.page(topic_ask).url
+    scrape_page()
+   
 
 # Tokenizes the text into words and sentences
 def tokenize():
@@ -79,8 +68,10 @@ def sentence_freq_score_calculator(sentences):
     global sentencevalue
     sentencevalue = dict()
     for sentence in sentences:
-        for word in nltk.word_tokenize(sentence):
-            if word in word_frequency_dictionary.keys():
+        tokenized_list = nltk.word_tokenize(sentence)
+        for word in tokenized_list:
+            word_freq_keys = word_frequency_dictionary.keys()
+            if word in word_freq_keys:
                     if sentence not in sentencevalue:
                         sentencevalue.update({sentence : word_frequency_dictionary[word]})
                     else:
@@ -92,6 +83,7 @@ def sentence_value_updater():
     sentencevalue = sentence_freq_score_calculator(sentences)
         
     for sentence in sentencevalue:
+        # for each word in topic_ask check
         if topic_ask.lower() + "is" in sentence.lower():
             sentencevalue[sentence] += 4
     
@@ -113,6 +105,7 @@ def summary_creator():
     return summary
    
 def main():
+    global topic_ask, url
     text_or_topic = input("Do you want a text, topic or url summarized? \n"
                           "For topic, enter topic. \n For text, enter text. \n For url, enter url: \n")
     if text_or_topic == "topic":
@@ -126,7 +119,7 @@ def main():
         global article,topic_ask,formatted_text
         topic_ask = input("Enter the title of the text you want summarized (Or give the text a title): \n")
         article = input("Enter the text here: \n")
-        formatted_text = re.sub('[^a-zA-Z]', " ", article)
+        formatted_text = re.sub('[^a-zA-Z.]', " ", article)
         formatted_text = re.sub(r'\s+', " ", formatted_text)
         tokenize()
         word_frequency_dict_creator()
@@ -134,6 +127,12 @@ def main():
         summary = summary_creator()
         print(summary)
     else:
-        pass
-        
+        url = input("Enter url here: \n")
+        topic_ask = input("Enter the topic here: \n")
+        scrape_page()
+        tokenize()
+        word_frequency_dict_creator()
+        sentence_value_updater()
+        summary = summary_creator()
+        print(summary)
 main()
